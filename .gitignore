@@ -1,52 +1,134 @@
-# Prerequisites
-*.d
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <ctype.h>
 
-# Object files
-*.o
-*.ko
-*.obj
-*.elf
+#define TABLE_SIZE 10000
+#define WORD_LENGTH 45
 
-# Linker output
-*.ilk
-*.map
-*.exp
+typedef struct Node {
+    char word[WORD_LENGTH + 1];
+    struct Node* next;
+} Node;
 
-# Precompiled Headers
-*.gch
-*.pch
+Node* hashTable[TABLE_SIZE] = {NULL};
 
-# Libraries
-*.lib
-*.a
-*.la
-*.lo
+unsigned int hash(const char* word) {
+    unsigned int hashValue = 0;
+    for (int i = 0; word[i] != '\0'; i++) {
+        hashValue = (hashValue * 31 + tolower(word[i])) % TABLE_SIZE;
+    }
+    return hashValue;
+}
 
-# Shared objects (inc. Windows DLLs)
-*.dll
-*.so
-*.so.*
-*.dylib
+void loadDictionary(const char* filename) {
+    FILE* file = fopen(filename, "r");
+    if (!file) {
+        printf("Could not open dictionary file.\n");
+        return;
+    }
 
-# Executables
-*.exe
-*.out
-*.app
-*.i*86
-*.x86_64
-*.hex
+    char word[WORD_LENGTH + 1];
+    while (fscanf(file, "%45s", word) != EOF) {
+        unsigned int index = hash(word);
+        Node* newNode = malloc(sizeof(Node));
+        if (!newNode) {
+            printf("Memory allocation failed.\n");
+            fclose(file);
+            return;
+        }
+        strcpy(newNode->word, word);
+        newNode->next = hashTable[index];
+        hashTable[index] = newNode;
+    }
 
-# Debug files
-*.dSYM/
-*.su
-*.idb
-*.pdb
+    fclose(file);
+    printf("Dictionary loaded successfully.\n");
+}
 
-# Kernel Module Compile Results
-*.mod*
-*.cmd
-.tmp_versions/
-modules.order
-Module.symvers
-Mkfile.old
-dkms.conf
+int checkWord(const char* word) {
+    unsigned int index = hash(word);
+    Node* cursor = hashTable[index];
+    while (cursor != NULL) {
+        if (strcasecmp(cursor->word, word) == 0) {
+            return 1;
+        }
+        cursor = cursor->next;
+    }
+    return 0;
+}
+
+void correctSpelling(const char* word, char suggestions[5][WORD_LENGTH + 1]) {
+    int suggestionCount = 0;
+
+    for (int i = 0; i < TABLE_SIZE && suggestionCount < 5; i++) {
+        Node* cursor = hashTable[i];
+        while (cursor != NULL && suggestionCount < 5) {
+            // Suggest words with the same first character and similar length
+            if (tolower(cursor->word[0]) == tolower(word[0]) && 
+                abs((int)strlen(cursor->word) - (int)strlen(word)) <= 2) {
+                strcpy(suggestions[suggestionCount], cursor->word);
+                suggestionCount++;
+            }
+            cursor = cursor->next;
+        }
+    }
+
+    // Fill the remaining slots with empty strings if less than 5 suggestions
+    for (int i = suggestionCount; i < 5; i++) {
+        suggestions[i][0] = '\0';
+    }
+}
+
+void unloadDictionary() {
+    for (int i = 0; i < TABLE_SIZE; i++) {
+        Node* cursor = hashTable[i];
+        while (cursor != NULL) {
+            Node* temp = cursor;
+            cursor = cursor->next;
+            free(temp);
+        }
+        hashTable[i] = NULL;
+    }
+    printf("Dictionary unloaded successfully.\n");
+}
+
+int main() {
+    loadDictionary("dictionary.txt");
+
+    char word[WORD_LENGTH + 1];
+    char suggestions[5][WORD_LENGTH + 1];
+
+    printf("Enter words to check (type 'exit' to quit):\n");
+    while (1) {
+        printf("> ");
+        scanf("%s", word);
+
+        if (strcmp(word, "exit") == 0) {
+            break;
+        }
+
+        if (checkWord(word)) {
+            printf("'%s' is spelled correctly.\n", word);
+        } else {
+            printf("'%s' is misspelled.\n", word);
+            correctSpelling(word, suggestions);
+
+            printf("Did you mean:\n");
+            int found = 0;
+            for (int i = 0; i < 5; i++) {
+                if (suggestions[i][0] != '\0') {
+                    printf("- %s\n", suggestions[i]);
+                    found = 1;
+                }
+            }
+            if (!found) {
+                printf("No suggestions available.\n");
+            }
+        }
+    }
+
+    unloadDictionary();
+    return 0;
+}
+
